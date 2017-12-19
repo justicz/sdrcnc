@@ -1,5 +1,6 @@
 from flask import Flask, request, abort, g, jsonify
 from db_helpers import *
+import json
 import time
 import os
 
@@ -43,9 +44,11 @@ def generate_api_key():
 def get_commands():
     # cid is autoincrement, and we never delete from the commands DB, so this
     # is OK. The internet confirms that order by rowid is OK
-    return query_db('SELECT cid, command FROM commands ' \
-                    'WHERE completed = 0 AND ' \
-                    'rid = ? ORDER BY rowid', [g.rid], commit=False)
+    commands = query_db('SELECT cid, command FROM commands ' \
+                        'WHERE completed = 0 AND ' \
+                        'rid = ? ORDER BY rowid', [g.rid], commit=False)
+
+    return [{"cid": c[0], "data": json.loads(c[1])} for c in commands]
 
 def process_completed_commands(commands):
     # for each completed command, mark it as completed and record the results
@@ -62,6 +65,10 @@ def process_completed_commands(commands):
 
 @app.route("/provisioning", methods=["POST"], endpoint="provisioning")
 def provisioning():
+    # Make sure we should be handing out keys
+    if not PROVISIONING_ENABLED:
+        abort(403)
+    
     # Do some basic validation
     request_data = request.get_json()
     if request_data is None or type(request_data) != dict:
@@ -69,10 +76,9 @@ def provisioning():
     if type(request_data.get("name", None)) not in [str, unicode]:
         abort(400)
 
-    api_key = generate_api_key()
-
     # Generate an API key and add this radio to our database
-    query_db('INSERT INTO radios (api_key, name) VALUES (?, ?)',
+    api_key = generate_api_key()
+    query_db('INSERT OR REPLACE INTO radios (api_key, name) VALUES (?, ?)',
              [api_key, request_data["name"]])
 
     return jsonify({ "api_key": api_key })
