@@ -1,7 +1,8 @@
 CREATE TABLE radios (
   rid INTEGER PRIMARY KEY,
-  token TEXT NOT NULL UNIQUE,
-  description TEXT NOT NULL
+  api_key TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT
 );
 
 CREATE UNIQUE INDEX idx_radios_token ON radios (token);
