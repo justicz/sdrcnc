@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import os
 
 class Command:
     def __init__(self, cid, data, results):
@@ -35,7 +36,13 @@ class ConfigCommand(Command):
                           "config": self.data.get("changes", {}),
                           "result": "OK"})
 
-COMMAND_TYPES = { "shell": ShellCommand, "config": ConfigCommand }
+class UpdateCommand(Command):
+    def run(self):
+        os.chdir(os.path.dirname(os.path.realpath(__file__)))
+        subprocess.run(["git", "pull"])
+        subprocess.run(["sudo", "systemctl", "restart", "sdrclient.service"])
+
+COMMAND_TYPES = { "shell": ShellCommand, "config": ConfigCommand, "update": UpdateCommand }
 
 def run_command(command, results_queue):
     logging.info("Processing command CID={}".format(command["cid"]))
