@@ -11,6 +11,7 @@ CREATE TABLE commands (
   cid INTEGER PRIMARY KEY,
   completed INTEGER DEFAULT 0,
   command TEXT NOT NULL,
+  async INTEGER DEFAULT 0,
   result BLOB,
   rid INTEGER NOT NULL,
   FOREIGN KEY(rid) REFERENCES radios(rid)

@@ -1,4 +1,5 @@
 import multiprocessing as mp
+import command_runner
 import requests
 import logging
 import random
@@ -8,11 +9,12 @@ import yaml
 import time
 
 CONFIG_FILE = "config.yml"
-NETWORK_RETRY_DELAY = 6
-NETWORK_RETRY_ATTEMPTS = 100
 NAME_WORDS = 3
 FALLBACK_CONFIG = "https://justi.cz/fallback_config.yml"
 DEFAULT_POLL_INTERVAL = 5
+DEFAULT_SYNC_TASK_TIMEOUT = 60
+DEFAULT_NETWORK_RETRY_DELAY = 6
+DEFAULT_NETWORK_RETRY_ATTEMPTS = 100
 PROVISION_ENDPOINT = "provisioning"
 POLL_ENDPOINT      = "poll"
 
@@ -35,16 +37,18 @@ class Client:
         self.start_workers()
 
     def process_command(self, command, sync):
+        # Start a new process to handle the command 
+        sp = mp.Process(target = command_runner.run_command,
+                        args=(command, self.results))
+        sp.start()
+
+        # If we're dealing with it synchronously, wait for it to complete
         if sync:
-            res = {
-                "cid": command["cid"],
-                "result": "Processed command with cid {}".format(command["cid"])
-            }
-            self.results.put(res)
-        else:
-            # Spin up a new process and calls the sync version
-            sp = mp.Process(target = self.process_command, args=(command, True))
-            sp.start()
+            try:
+                sp.join(timeout=self.config["sync_task_timeout"])
+            except TimeoutError as e:
+                self.results.put({"cid": command["cid"],
+                                  "result": { "error": "Timed out" }})
 
     def process_sync_commands(self):
         while True:
@@ -63,18 +67,18 @@ class Client:
         self.p_async.start()
 
     def load_fallback_config(self):
-        for i in range(NETWORK_RETRY_ATTEMPTS):
+        for i in range(DEFAULT_NETWORK_RETRY_ATTEMPTS):
             try:
                 r = requests.get(FALLBACK_CONFIG)
                 self.config = yaml.load(r.text)
                 break
             except requests.exceptions.RequestException as e:
                 err = "Couldn't get fallback configuration [try {}/{}]"
-                logging.error(err.format(i + 1, NETWORK_RETRY_ATTEMPTS))
+                logging.error(err.format(i + 1, DEFAULT_NETWORK_RETRY_ATTEMPTS))
             except yaml.YAMLError as e:
                 logging.critical("Invalid fallback config. Exiting")
                 exit(-1)
-            time.sleep(NETWORK_RETRY_DELAY)
+            time.sleep(DEFAULT_NETWORK_RETRY_DELAY)
         else:
             logging.critical("Couldn't load any config. Exiting")
             exit(-1)
@@ -89,11 +93,11 @@ class Client:
                              { "name": self.config["name"] },
                              auth = False)
 
-        if type(r) != dict or type(r.get("api_key", None)) not in [str, unicode]:
+        if type(r) != dict or type(r.get("api_key", None)) not in [str, bytes]:
             logging.critical("Invalid provisioning response. Exiting")
             exit(-1)
 
-        self.config["api_key"] = r["api_key"]
+        return r["api_key"]
 
     def choose_name(self):
         name_parts = []
@@ -101,27 +105,40 @@ class Client:
             lines = fin.readlines()
             for i in range(NAME_WORDS):
                 name_parts.append(random.choice(lines).strip())
-        self.config["name"] = " ".join(name_parts)
+        return " ".join(name_parts)
 
     def api_request(self, path, body = {}, headers = {}, auth = True):
-        for i in range(NETWORK_RETRY_ATTEMPTS):
+        for i in range(self.config["network_retry_attempts"]):
             try:
                 if auth:
                     headers["Authorization"] = "Bearer " + self.config["api_key"]
                 r = requests.post(self.config["api_url"] + path,
                                   json = body,
                                   headers = headers)
+                # For some reason we're no longer authorized? Try to provision
+                if r.status_code == 403:
+                    self.config["api_key"] = self.provision_api_key()
+                    self.write_config() 
                 return r.json()
             except requests.exceptions.RequestException as e:
                 err = "Error making api request [try {}/{}]"
-                logging.error(err.format(i + 1, NETWORK_RETRY_ATTEMPTS))
+                logging.error(err.format(i + 1, self.config["network_retry_attempts"]))
             except ValueError as e:
                 err = "Invalid response from api. [try {}/{}]"
-            time.sleep(NETWORK_RETRY_DELAY)
+            time.sleep(self.config["network_retry_delay"])
         else:
             logging.critical("API seems down. Exiting")
             exit(-1)
- 
+
+    def set_default_config(self, key, default, empty=(None,), sidefx=False):
+        if self.config.get(key, None) in empty:
+            # If we have side effects, then the passed value is actually a
+            # function that we call
+            if sidefx:
+                self.config[key] = default()
+            else:
+                self.config[key] = default
+
     def init_configuration(self):
         # First attempt to load the configuration from a file
         with open(self.config_file, "r+") as fin:
@@ -132,24 +149,19 @@ class Client:
                 logging.error("Couldn't load from configuration file. Loading fallback")
                 self.load_fallback_config()
 
-        # Give ourselves a name if we don't have one
-        if self.config.get("name", None) in ("", None):
-            self.choose_name()
-
         # At this point, we have *some* configuration, but we might need to
-        # provision a key for ourselves
-        if self.config.get("api_key", None) in ("", None):
-            self.provision_api_key()
-
-        # Ensure some other defaults are set
-        if self.config.get("poll_interval", None) is None:
-            self.config["poll_interval"] = DEFAULT_POLL_INTERVAL
+        # make a name and provision a key for ourselves
+        self.set_default_config("network_retry_delay", DEFAULT_NETWORK_RETRY_DELAY)
+        self.set_default_config("network_retry_attempts", DEFAULT_NETWORK_RETRY_ATTEMPTS)
+        self.set_default_config("sync_task_timeout", DEFAULT_SYNC_TASK_TIMEOUT)
+        self.set_default_config("poll_interval", DEFAULT_POLL_INTERVAL)
+        self.set_default_config("name", self.choose_name, ("", None), True)
+        self.set_default_config("api_key", self.provision_api_key, ("", None), True)
 
         # Write out to canonicalize and save any changes
         self.write_config()
 
     def submit_results_and_get_commands(self, completed_commands = {}):
-
         # Grab all of the results that we can
         results = []
         try:
@@ -161,6 +173,12 @@ class Client:
         # Report results back to the server and get new commands
         body = { "completed_commands": results }
         new_commands = self.api_request(POLL_ENDPOINT, body)
+
+        # Remove completed commands from the "seen" list, since we will never
+        # see them again
+        for c in results:
+            self.seen_cids.remove(c["cid"])
+
         for c in new_commands:
             # Ignore commands we've already seen
             if c["cid"] in self.seen_cids:

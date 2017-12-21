@@ -44,18 +44,18 @@ def generate_api_key():
 def get_commands():
     # cid is autoincrement, and we never delete from the commands DB, so this
     # is OK. The internet confirms that order by rowid is OK
-    commands = query_db('SELECT cid, command FROM commands ' \
+    commands = query_db('SELECT cid, async, command FROM commands ' \
                         'WHERE completed = 0 AND ' \
                         'rid = ? ORDER BY rowid', [g.rid], commit=False)
 
-    return [{"cid": c[0], "data": json.loads(c[1])} for c in commands]
+    return [{"cid": c[0], "async": bool(c[1]), "data": json.loads(c[2])} for c in commands]
 
 def process_completed_commands(commands):
     # for each completed command, mark it as completed and record the results
     for command in commands:
         if type(command) != dict:
             abort(400)
-        cid, result = command['cid'], command['result']
+        cid, result = command['cid'], json.dumps(command['result'])
         query_db('UPDATE commands SET '
                  'completed = 1, ' \
                  'result = ? ' \
@@ -93,6 +93,8 @@ def poll():
     # Mark commands that the radio has completed and collect responses
     completed_commands = request_data.get(PARAM_COMPLETED, [])
     process_completed_commands(completed_commands)
+
+    print(completed_commands)
 
     # Reply with any new/remaining commands
     commands = get_commands()
