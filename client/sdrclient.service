@@ -1,0 +1,13 @@
+[Unit]
+Description=SDR Client
+After=multi-user.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/sdrcnc/client
+ExecStart=/usr/bin/python3 /home/pi/sdrcnc/client/sdrclient.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
