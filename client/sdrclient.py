@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import command_runner
+import subprocess
 import requests
 import logging
 import random
@@ -166,14 +167,17 @@ class Client:
     def submit_results_and_get_commands(self, completed_commands = {}):
         # Grab all of the results that we can
         results = []
+        should_restart = False
         try:
             while True:
                 result = self.results.get_nowait()
-                # Config commands are special, and get applied in the client
+                # Config/Restart commands are special, and get applied in the client
                 if result.get("config", None) is not None:
                     for key, value in result["config"].items():
                         self.config[key] = value
                     self.write_config()
+                if result.get("restart", False):
+                    should_restart = True
                 results.append(result)
         except queue.Empty as e:
             pass
@@ -181,6 +185,10 @@ class Client:
         # Report results back to the server and get new commands
         body = { "completed_commands": results }
         new_commands = self.api_request(POLL_ENDPOINT, body)
+
+        # Restart in order to apply software updates
+        if should_restart:
+            subprocess.run(["sudo", "systemctl", "restart", "sdrclient.service"])
 
         # Remove completed commands from the "seen" list, since we will never
         # see them again

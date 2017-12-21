@@ -38,9 +38,13 @@ class ConfigCommand(Command):
 
 class UpdateCommand(Command):
     def run(self):
+        # Like the config command, the update command also causes action to be
+        # taken in the Client (restarting the service)
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         subprocess.run(["git", "pull"])
-        subprocess.run(["sudo", "systemctl", "restart", "sdrclient.service"])
+        self.results.put({"cid": self.cid,
+                          "restart": True,
+                          "result": "OK"})
 
 COMMAND_TYPES = { "shell": ShellCommand, "config": ConfigCommand, "update": UpdateCommand }
 
