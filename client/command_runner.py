@@ -35,7 +35,6 @@ class ConfigCommand(Command):
                           "config": self.data.get("changes", {}),
                           "result": "OK"})
 
-
 COMMAND_TYPES = { "shell": ShellCommand, "config": ConfigCommand }
 
 def run_command(command, results_queue):

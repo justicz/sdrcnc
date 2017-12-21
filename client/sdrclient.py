@@ -141,13 +141,15 @@ class Client:
 
     def init_configuration(self):
         # First attempt to load the configuration from a file
-        with open(self.config_file, "r+") as fin:
-            try:
+        try:
+            with open(self.config_file, "r+") as fin:
                 logging.info("Loading configuration from {}".format(self.config_file))
                 self.config = yaml.load(fin)
-            except yaml.YAMLError as e:
-                logging.error("Couldn't load from configuration file. Loading fallback")
-                self.load_fallback_config()
+                if type(self.config) != dict:
+                    raise yaml.YAMLError
+        except (FileNotFoundError, yaml.YAMLError) as e:
+            logging.error("Couldn't load from configuration file. Loading fallback")
+            self.load_fallback_config()
 
         # At this point, we have *some* configuration, but we might need to
         # make a name and provision a key for ourselves
