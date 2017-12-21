@@ -1,2 +1,3 @@
-{api_key: !!python/unicode '38290664152f8d2dc5bb19ec2b4b8036e0ee671072df0d707dc3ae300cb61280',
-  api_url: 'http://localhost:5000/', name: transgressions candor's subsets}
+{api_key: 2ba51e3c5ca57c200d2d9b4283d7a32aefcda6f7132a398ddf93f86128fa8786, api_url: 'http://localhost:5000/',
+  foo: test, name: transgressions candor's subsets, network_retry_attempts: 100, network_retry_delay: 6,
+  poll_interval: 5, sync_task_timeout: 60}

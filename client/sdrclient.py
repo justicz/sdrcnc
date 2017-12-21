@@ -166,7 +166,13 @@ class Client:
         results = []
         try:
             while True:
-                results.append(self.results.get_nowait())
+                result = self.results.get_nowait()
+                # Config commands are special, and get applied in the client
+                if result.get("config", None) is not None:
+                    for key, value in result["config"].items():
+                        self.config[key] = value
+                    self.write_config()
+                results.append(result)
         except queue.Empty as e:
             pass
 

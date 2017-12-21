@@ -27,7 +27,16 @@ class ShellCommand(Command):
         # Put the results in the results queue
         self.results.put({"cid": self.cid, "result": p.stdout.decode("utf-8")})
 
-COMMAND_TYPES = { "shell": ShellCommand }
+class ConfigCommand(Command):
+    def run(self):
+        # Config commands are special, in that the result is intercepted by
+        # the Client and applied there.
+        self.results.put({"cid": self.cid,
+                          "config": self.data.get("changes", {}),
+                          "result": "OK"})
+
+
+COMMAND_TYPES = { "shell": ShellCommand, "config": ConfigCommand }
 
 def run_command(command, results_queue):
     logging.info("Processing command CID={}".format(command["cid"]))
