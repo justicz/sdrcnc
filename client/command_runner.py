@@ -82,7 +82,11 @@ def run_command(command, results_queue):
     command_type = COMMAND_TYPES.get(data.get("type", ""), None)
     if command_type is not None:
         c = command_type(command["cid"], data, results_queue)
-        c.run()
+        try:
+            c.run()
+        except Exception as e:
+            results_queue.put({"cid": command["cid"],
+                               "result": {"error": "command raised exception {}".format(e)}})
     else:
         results_queue.put({"cid": command["cid"], "result": {"error": "invalid command type"}})
 
