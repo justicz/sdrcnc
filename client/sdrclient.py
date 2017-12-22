@@ -1,4 +1,5 @@
 import multiprocessing as mp
+from rtlsdr import RtlSdr
 import command_runner
 import subprocess
 import requests
@@ -20,8 +21,7 @@ PROVISION_ENDPOINT = "provisioning"
 POLL_ENDPOINT      = "poll"
 
 class Client:
-    def __init__(self, config_file):
-        self.config_file = config_file
+    def __init__(self):
         self.config = {}
         self.init_configuration()
 
@@ -33,6 +33,9 @@ class Client:
         self.async_commands = mp.Queue()
         # A queue of command results
         self.results = mp.Queue()
+        # Radio interface & lock
+        self.sdr = RtlSdr()
+        self.sdr_lock = mp.Lock()
 
         # Start the worker processes to deal with those queues
         self.start_workers()
@@ -40,7 +43,7 @@ class Client:
     def process_command(self, command, sync):
         # Start a new process to handle the command 
         sp = mp.Process(target = command_runner.run_command,
-                        args=(command, self.results))
+                        args=(command, self.results, self.sdr, self.sdr_lock))
         sp.start()
 
         # If we're dealing with it synchronously, wait for it to complete
@@ -86,7 +89,7 @@ class Client:
         logging.info("Successfully loaded fallback configuration.")
 
     def write_config(self):
-        with open(self.config_file, "w") as fout:
+        with open(CONFIG_FILE, "w") as fout:
             fout.write(yaml.dump(self.config))
 
     def provision_api_key(self):
@@ -143,8 +146,8 @@ class Client:
     def init_configuration(self):
         # First attempt to load the configuration from a file
         try:
-            with open(self.config_file, "r+") as fin:
-                logging.info("Loading configuration from {}".format(self.config_file))
+            with open(CONFIG_FILE, "r+") as fin:
+                logging.info("Loading configuration from {}".format(CONFIG_FILE))
                 self.config = yaml.load(fin)
                 if type(self.config) != dict:
                     raise yaml.YAMLError
@@ -213,6 +216,6 @@ class Client:
             time.sleep(self.config["poll_interval"])
 
 if __name__ == "__main__":
-    c = Client(CONFIG_FILE)
+    c = Client()
     c.poll_forever()
 

@@ -1,12 +1,13 @@
-from rtlsdr import RtlSdr
 import logging
 import subprocess
 import os
 
 class Command:
-    def __init__(self, cid, data, results):
+    def __init__(self, cid, data, sdr, sdr_lock, results):
         self.cid = cid
         self.data = data
+        self.sdr = sdr
+        self.sdr_lock = sdr_lock
         self.results = results
 
     def run(self):
@@ -56,32 +57,42 @@ class SDRCommand(Command):
             self.results.put({"cid": self.cid, "result": {"error": "missing args"}})
             return
 
-        # Initialize the SDR
-        sdr = RtlSdr()
+        self.sdr_lock.acquire()
 
-        # Report the samples
-        sdr.sample_rate = int(self.data["sample_rate"])
-        sdr.center_freq = int(self.data["center_freq"])
-        sdr.freq_correction = int(self.data["freq_correction"])
-        sdr.gain = self.data["gain"]
-        samples = sdr.read_samples(self.data["num_samples"])
+        # (real, imag) samples from the SDR
+        samples = []
+
+        try:
+            # Grab the samples
+            self.sdr.sample_rate = int(self.data["sample_rate"])
+            self.sdr.center_freq = int(self.data["center_freq"])
+            self.sdr.freq_correction = int(self.data["freq_correction"])
+            self.sdr.gain = self.data["gain"]
+            samples = self.sdr.read_samples(self.data["num_samples"])
+        except Exception as e:
+            # Deal with any errors talking to the hardware
+            self.results.put({"cid": self.cid,
+                              "result": {"error": "SDR exception: {}".format(e)}})
+            self.sdr_lock.release()
+            return
+
+        self.sdr_lock.release()
+
         self.results.put({"cid": self.cid,
                           "result": [(s.real, s.imag) for s in samples]})
 
-        # Clean up the SDR connection
-        sdr.close()
 
 COMMAND_TYPES = { "shell": ShellCommand,
                   "config": ConfigCommand,
                   "update": UpdateCommand,
                   "sdr": SDRCommand }
 
-def run_command(command, results_queue):
+def run_command(command, results_queue, sdr, sdr_lock):
     logging.info("Processing command CID={}".format(command["cid"]))
     data = command.get("data", {})
     command_type = COMMAND_TYPES.get(data.get("type", ""), None)
     if command_type is not None:
-        c = command_type(command["cid"], data, results_queue)
+        c = command_type(command["cid"], data, sdr, sdr_lock, results_queue)
         try:
             c.run()
         except Exception as e:
