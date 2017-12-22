@@ -1,3 +1,4 @@
+from rtlsdr import RtlSdr
 import logging
 import subprocess
 import os
@@ -46,7 +47,34 @@ class UpdateCommand(Command):
                           "restart": True,
                           "result": "OK"})
 
-COMMAND_TYPES = { "shell": ShellCommand, "config": ConfigCommand, "update": UpdateCommand }
+class SDRCommand(Command):
+    def run(self):
+        # Ensure we were passed all of the required args
+        required_keys = ["sample_rate", "center_freq",
+                         "freq_correction", "num_samples", "gain"]
+        if not all([k in self.data for k in required_keys]):
+            self.results.put({"cid": self.cid, "result": {"error": "missing args"}})
+            return
+
+        # Initialize the SDR
+        sdr = RtlSdr()
+
+        # Report the samples
+        sdr.sample_rate = int(self.data["sample_rate"])
+        sdr.center_freq = int(self.data["center_freq"])
+        sdr.freq_correction = int(self.data["freq_correction"])
+        sdr.gain = self.data["gain"]
+        samples = sdr.read_samples(self.data["num_samples"])
+        self.results.put({"cid": self.cid,
+                          "result": [(s.real, s.imag) for s in samples]})
+
+        # Clean up the SDR connection
+        sdr.close()
+
+COMMAND_TYPES = { "shell": ShellCommand,
+                  "config": ConfigCommand,
+                  "update": UpdateCommand,
+                  "sdr": SDRCommand }
 
 def run_command(command, results_queue):
     logging.info("Processing command CID={}".format(command["cid"]))
