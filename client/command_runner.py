@@ -48,6 +48,13 @@ class UpdateCommand(Command):
                           "restart": True,
                           "result": "OK"})
 
+class RestartCommand(Command):
+    def run(self):
+        # Same restart procedure as in UpdateCommand
+        self.results.put({"cid": self.cid,
+                          "restart": True,
+                          "result": "OK"})
+
 class SDRCommand(Command):
     def run(self):
         # Ensure we were passed all of the required args
@@ -85,6 +92,7 @@ class SDRCommand(Command):
 COMMAND_TYPES = { "shell": ShellCommand,
                   "config": ConfigCommand,
                   "update": UpdateCommand,
+                  "restart": RestartCommand,
                   "sdr": SDRCommand }
 
 def run_command(command, results_queue, sdr, sdr_lock):
