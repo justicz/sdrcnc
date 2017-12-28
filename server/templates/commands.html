@@ -1,0 +1,37 @@
+<html>
+  <head>
+    <title>SDR CNC</title>
+    <style>
+      div, table {
+        width: 100%;
+        height: 100%;
+      }
+      textarea {
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <table>
+        <colgroup>
+          <col span="1" style="width: 10%;">
+          <col span="1" style="width: 45%;">
+          <col span="1" style="width: 45%;">
+        </colgroup>
+        <tr>
+          <th>RID</th>
+          <th>Command</th>
+          <th>Result</th>
+        </tr>
+        {% for cmd in cmds %}
+        <tr>
+          <td>{{ cmd[5] }}</td>
+          <td><textarea>{{ cmd[2] }}</textarea></td>
+          <td><textarea>{{ cmd[4] }}</textarea></td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </body>
+</html>
